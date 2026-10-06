@@ -1,0 +1,69 @@
+.feed {
+  position: relative;
+  width: 390px;
+  max-width: 100%;
+  height: 844px;
+  max-height: 100dvh;
+  margin: 0 auto;
+  overflow: hidden;
+  background: #0b0b0f;
+  touch-action: none;
+}
+
+.track {
+  height: 100%;
+  transition: transform 0.38s cubic-bezier(0.22, 0.8, 0.3, 1);
+}
+
+.slide {
+  height: 100%;
+}
+
+.dots {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.dotActive {
+  background: #fff;
+}
+
+.hint {
+  position: absolute;
+  left: 50%;
+  bottom: 72px;
+  transform: translateX(-50%);
+  z-index: 5;
+  padding: 6px 12px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+  animation: hintBob 1.6s ease-in-out infinite;
+}
+
+@keyframes hintBob {
+  0%,
+  100% {
+    transform: translate(-50%, 0);
+  }
+  50% {
+    transform: translate(-50%, -6px);
+  }
+}

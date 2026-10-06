@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  useCallback,
   useEffect,
   useRef,
   useState,
@@ -9,17 +8,18 @@ import {
   type CSSProperties,
   type FormEvent,
 } from "react";
-import { loadClip, saveClip } from "@/lib/clipStore";
 import {
   commentDelay,
   DEFAULT_CLIP_SECONDS,
   makeComment,
   nextViewers,
+  nextViewersMidStream,
   type SimComment,
 } from "@/lib/liveSim";
 import styles from "./LiveStreamScreen.module.css";
 
 const VISIBLE_COMMENTS = 5;
+const PINNED_MS = 8000;
 
 const REACTIONS = [
   { emoji: "❤️", left: 30, duration: 3.8, delay: 0 },
@@ -31,16 +31,42 @@ const REACTIONS = [
   { emoji: "🔥", left: 26, duration: 4.9, delay: 4.1 },
 ];
 
-export interface LiveStreamScreenProps {
-  accent?: string;
+/** A comment that appears at a fixed point of the clip, every time it plays. */
+export type ScheduledComment = { at: number; name: string; text: string };
+
+export interface StreamConfig {
+  /** Viewer count to start from; with `midStream` the count creeps up from here. */
+  initialViewers?: number;
+  /** Simulates joining a stream that started a while ago (busy chat from the start). */
+  midStream?: boolean;
+  scheduled?: ScheduledComment[];
 }
 
-export default function LiveStreamScreen({ accent = "#FF3B30" }: LiveStreamScreenProps) {
+export interface LiveStreamScreenProps {
+  accent?: string;
+  config?: StreamConfig;
+  clipUrl: string | null;
+  /** Only the visible slide plays and simulates; the others stay frozen. */
+  active: boolean;
+  onPickClip: (file: File) => void;
+}
+
+export default function LiveStreamScreen({
+  accent = "#FF3B30",
+  config = {},
+  clipUrl,
+  active,
+  onPickClip,
+}: LiveStreamScreenProps) {
+  const initialViewers = config.initialViewers ?? 0;
+  const midStream = config.midStream ?? false;
+  const scheduled = config.scheduled;
+
   const [draft, setDraft] = useState("");
-  const [clipUrl, setClipUrl] = useState<string | null>(null);
-  const [viewers, setViewers] = useState(0);
+  const [viewers, setViewers] = useState(initialViewers);
   const [trend, setTrend] = useState(0);
   const [comments, setComments] = useState<SimComment[]>([]);
+  const [pinned, setPinned] = useState<SimComment | null>(null);
   // Bumping this restarts the simulation (viewer count, comments, clip playback).
   const [session, setSession] = useState(0);
   // Browsers block autoplay-with-sound without a tap (e.g. clip restored on reload).
@@ -51,49 +77,50 @@ export default function LiveStreamScreen({ accent = "#FF3B30" }: LiveStreamScree
   const fileRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const durationRef = useRef(DEFAULT_CLIP_SECONDS);
-  const viewersRef = useRef(0);
+  const viewersRef = useRef(initialViewers);
   const commentsRef = useRef<SimComment[]>([]);
+  const idRef = useRef(0);
+  const usedNamesRef = useRef(new Set<string>());
+  const usedTextsRef = useRef(new Set<string>());
+  const firedRef = useRef(new Set<number>());
+  const pinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const resetSession = useCallback(() => {
-    setViewers(0);
+  const running = active && !ended;
+
+  const clearPin = () => {
+    if (pinTimerRef.current) clearTimeout(pinTimerRef.current);
+    pinTimerRef.current = null;
+    setPinned(null);
+  };
+
+  const resetSession = () => {
+    setViewers(initialViewers);
     setTrend(0);
     setComments([]);
+    clearPin();
     setEnded(false);
     setSession((n) => n + 1);
-  }, []);
+  };
 
-  const applyClip = useCallback((blob: Blob) => {
-    setClipUrl((old) => {
-      if (old) URL.revokeObjectURL(old);
-      return URL.createObjectURL(blob);
-    });
-    durationRef.current = DEFAULT_CLIP_SECONDS;
-    setNeedsUnmute(false);
-    resetSession();
-  }, [resetSession]);
-
-  // Restore the remembered clip on first load.
-  useEffect(() => {
-    let cancelled = false;
-    loadClip().then((blob) => {
-      if (blob && !cancelled) applyClip(blob);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [applyClip]);
-
-  // Play with sound; fall back to muted playback if the browser refuses.
+  // Play with sound while active; fall back to muted playback if the browser refuses.
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !clipUrl) return;
+    if (!active) {
+      video.pause();
+      return;
+    }
     video.muted = false;
     video.play().catch(() => {
       video.muted = true;
       video.play().catch(() => {});
       setNeedsUnmute(true);
     });
-  }, [clipUrl]);
+  }, [clipUrl, active]);
+
+  useEffect(() => () => {
+    if (pinTimerRef.current) clearTimeout(pinTimerRef.current);
+  }, []);
 
   const unmute = () => {
     const video = videoRef.current;
@@ -108,20 +135,24 @@ export default function LiveStreamScreen({ accent = "#FF3B30" }: LiveStreamScree
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    saveClip(file).catch(() => {});
-    applyClip(file);
+    durationRef.current = DEFAULT_CLIP_SECONDS;
+    setNeedsUnmute(false);
+    onPickClip(file);
   };
 
-  // Viewer count: ~20 with stalls early, then a fast climb to 30k and beyond.
+  // Viewer count. Fresh stream: ~20 with stalls, then a fast climb to 30k.
+  // Mid-stream: starts at `initialViewers` and keeps rising.
   useEffect(() => {
-    if (ended) return;
+    if (!running) return;
     const start = performance.now();
-    viewersRef.current = 0;
+    viewersRef.current = initialViewers;
     let history: number[] = [];
     let timer: ReturnType<typeof setTimeout>;
     const tick = () => {
       const t = (performance.now() - start) / 1000;
-      const next = nextViewers(viewersRef.current, t, durationRef.current);
+      const next = midStream
+        ? nextViewersMidStream(viewersRef.current, t, durationRef.current, initialViewers)
+        : nextViewers(viewersRef.current, t, durationRef.current);
       viewersRef.current = next;
       history = [...history.slice(-6), next];
       setViewers(next);
@@ -130,25 +161,49 @@ export default function LiveStreamScreen({ accent = "#FF3B30" }: LiveStreamScree
     };
     timer = setTimeout(tick, 800);
     return () => clearTimeout(timer);
-  }, [session, ended]);
+  }, [session, running, midStream, initialViewers]);
 
-  // Comments: mix of fresh and repeated lines, faster as the audience grows.
+  // Comments: fresh and tweaked lines, faster as the audience grows.
   useEffect(() => {
-    if (ended) return;
+    if (!running) return;
     commentsRef.current = [];
-    const usedNames = new Set<string>();
-    const usedTexts = new Set<string>();
-    let id = 0;
+    idRef.current = 0;
+    usedNamesRef.current = new Set(scheduled?.map((c) => c.name));
+    usedTextsRef.current = new Set(scheduled?.map((c) => c.text));
+    firedRef.current = new Set();
     let timer: ReturnType<typeof setTimeout>;
     const push = () => {
-      const next = makeComment(id++, viewersRef.current, commentsRef.current, usedNames, usedTexts);
+      const next = makeComment(
+        idRef.current++,
+        viewersRef.current,
+        commentsRef.current,
+        usedNamesRef.current,
+        usedTextsRef.current,
+      );
       commentsRef.current = [...commentsRef.current.slice(-24), next];
       setComments(commentsRef.current.slice(-VISIBLE_COMMENTS));
       timer = setTimeout(push, commentDelay(viewersRef.current));
     };
-    timer = setTimeout(push, 1200);
+    timer = setTimeout(push, midStream ? 300 : 1200);
     return () => clearTimeout(timer);
-  }, [session, ended]);
+  }, [session, running, midStream, scheduled]);
+
+  // Scheduled comments fire off the video's own clock, so they land at the same
+  // moment of the clip on every play.
+  const handleTimeUpdate = () => {
+    if (!running || !scheduled) return;
+    const time = videoRef.current?.currentTime ?? 0;
+    scheduled.forEach((item, i) => {
+      if (time < item.at || firedRef.current.has(i)) return;
+      firedRef.current.add(i);
+      const comment: SimComment = { id: idRef.current++, name: item.name, text: item.text };
+      commentsRef.current = [...commentsRef.current.slice(-24), comment];
+      setComments(commentsRef.current.slice(-VISIBLE_COMMENTS));
+      if (pinTimerRef.current) clearTimeout(pinTimerRef.current);
+      setPinned(comment);
+      pinTimerRef.current = setTimeout(() => setPinned(null), PINNED_MS);
+    });
+  };
 
   const restart = () => {
     const video = videoRef.current;
@@ -177,8 +232,10 @@ export default function LiveStreamScreen({ accent = "#FF3B30" }: LiveStreamScree
           key={clipUrl}
           className={styles.video}
           src={clipUrl}
-          autoPlay
+          autoPlay={active}
           playsInline
+          preload="auto"
+          onTimeUpdate={handleTimeUpdate}
           onEnded={() => {
             setEnded(true);
             setTrend(0);
@@ -230,6 +287,14 @@ export default function LiveStreamScreen({ accent = "#FF3B30" }: LiveStreamScree
         </button>
       </div>
 
+      {pinned && (
+        <div className={styles.pinned} key={pinned.id}>
+          <span className={styles.pinnedLabel}>📌 ความเห็นเด่น</span>
+          <span className={styles.cName}>{pinned.name}</span>
+          <span className={styles.cText}>{pinned.text}</span>
+        </div>
+      )}
+
       <div className={styles.commentsCol} aria-label="ความเห็นผู้ชม">
         <div className={styles.commentsTrack}>
           {comments.map((comment) => (
@@ -244,19 +309,20 @@ export default function LiveStreamScreen({ accent = "#FF3B30" }: LiveStreamScree
       </div>
 
       <div className={styles.reactionCol} aria-hidden="true">
-        {!ended && REACTIONS.map((r, i) => (
-          <span
-            key={i}
-            className={styles.emoji}
-            style={{
-              left: `${r.left}px`,
-              animationDuration: `${r.duration}s`,
-              animationDelay: `${r.delay}s`,
-            }}
-          >
-            {r.emoji}
-          </span>
-        ))}
+        {running &&
+          REACTIONS.map((r, i) => (
+            <span
+              key={i}
+              className={styles.emoji}
+              style={{
+                left: `${r.left}px`,
+                animationDuration: `${r.duration}s`,
+                animationDelay: `${r.delay}s`,
+              }}
+            >
+              {r.emoji}
+            </span>
+          ))}
       </div>
 
       <form className={styles.inputBar} onSubmit={handleSend}>

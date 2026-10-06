@@ -1,7 +1,8 @@
 // Remembers the uploaded clip across reloads / restarts using IndexedDB.
 const DB_NAME = "live-stream-pwa";
 const STORE = "clips";
-const KEY = "main";
+// Slot 0 keeps the original key so clips saved before multi-clip support still load.
+const keyFor = (slot: number) => (slot === 0 ? "main" : `slot-${slot}`);
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -12,22 +13,22 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
-export async function saveClip(file: Blob): Promise<void> {
+export async function saveClip(slot: number, file: Blob): Promise<void> {
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).put(file, KEY);
+    tx.objectStore(STORE).put(file, keyFor(slot));
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
   db.close();
 }
 
-export async function loadClip(): Promise<Blob | null> {
+export async function loadClip(slot: number): Promise<Blob | null> {
   try {
     const db = await openDb();
     const blob = await new Promise<Blob | null>((resolve, reject) => {
-      const req = db.transaction(STORE).objectStore(STORE).get(KEY);
+      const req = db.transaction(STORE).objectStore(STORE).get(keyFor(slot));
       req.onsuccess = () => resolve((req.result as Blob | undefined) ?? null);
       req.onerror = () => reject(req.error);
     });

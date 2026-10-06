@@ -16,6 +16,14 @@ export function viewerTarget(t: number, duration: number): number {
   return TARGET * (1 + 0.3 * q) + Math.max(0, t - duration) * 40;
 }
 
+/** Audience of a stream that started a while ago: begins high and keeps creeping up. */
+export function nextViewersMidStream(current: number, t: number, duration: number, start: number): number {
+  const target = start + 9000 * Math.min(t / duration, 1) + Math.max(0, t - duration) * 40;
+  if (Math.random() < 0.15) return current; // occasional pause
+  const gap = Math.max(0, target - current);
+  return current + 1 + Math.floor(Math.random() * (gap * 0.3 + 40));
+}
+
 /** One step of the viewer counter: stalls and small steps early, surges later. */
 export function nextViewers(current: number, t: number, duration: number): number {
   const target = viewerTarget(t, duration);
