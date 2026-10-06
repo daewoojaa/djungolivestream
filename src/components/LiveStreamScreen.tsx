@@ -136,10 +136,12 @@ export default function LiveStreamScreen({ accent = "#FF3B30" }: LiveStreamScree
   useEffect(() => {
     if (ended) return;
     commentsRef.current = [];
+    const usedNames = new Set<string>();
+    const usedTexts = new Set<string>();
     let id = 0;
     let timer: ReturnType<typeof setTimeout>;
     const push = () => {
-      const next = makeComment(id++, viewersRef.current, commentsRef.current);
+      const next = makeComment(id++, viewersRef.current, commentsRef.current, usedNames, usedTexts);
       commentsRef.current = [...commentsRef.current.slice(-24), next];
       setComments(commentsRef.current.slice(-VISIBLE_COMMENTS));
       timer = setTimeout(push, commentDelay(viewersRef.current));

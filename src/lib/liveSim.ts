@@ -29,11 +29,27 @@ export function nextViewers(current: number, t: number, duration: number): numbe
   return current + step;
 }
 
-const NAMES = [
-  "เมย์ไทย", "ก้องกิ่ง", "Nara_", "ปูเป้", "บอยบอย", "น้องฟ้า", "mint.mint", "โอ๊ตตี้",
-  "แพรวา", "Fah_22", "ต้นกล้า", "นุ่นนิ่ม", "Pop", "จอห์นนี่", "ข้าวปั้น", "ลูกพีช",
-  "ธีร์", "มะปราง", "Bank99", "แอนนี่", "เจ๊ติ๋ม", "พี่หมี", "ฟรีเดอม", "ส้มโอ",
+const NAME_BASES = [
+  "เมย์", "ก้อง", "Nara", "ปูเป้", "บอย", "น้องฟ้า", "mint", "โอ๊ต", "แพรวา", "Fah",
+  "ต้นกล้า", "นุ่น", "Pop", "จอห์น", "ข้าวปั้น", "ลูกพีช", "ธีร์", "มะปราง", "Bank", "แอนนี่",
+  "เจ๊ติ๋ม", "พี่หมี", "ฟรีเดอม", "ส้มโอ", "ไอซ์", "มิว", "ปันปัน", "Ploy", "เก่ง", "ทิพย์",
+  "Zen", "นัท", "แบม", "เบลล์", "ตั้ม", "กุ๊กไก่", "Max", "ออมสิน", "เจเจ", "หมูหยอง",
 ];
+const NAME_TAILS = ["", "_", ".", "99", "_22", "xo", "ไทย", "จัง", "555", "_official", "07", "คนเดิม", "ii", "_th", "88"];
+
+/** A display name never used before in this session. */
+function uniqueName(used: Set<string>): string {
+  for (let i = 0; i < 200; i++) {
+    const name = pick(NAME_BASES) + pick(NAME_TAILS) + (i > 40 ? Math.floor(Math.random() * 9999) : "");
+    if (!used.has(name)) {
+      used.add(name);
+      return name;
+    }
+  }
+  const fallback = `user${used.size + 1}`;
+  used.add(fallback);
+  return fallback;
+}
 
 const EARLY = [
   "มาแล้ว!", "ไลฟ์อะไรอะ", "ใครมาก่อนบ้าง", "พิชญะไลฟ์จริงดิ", "เข้ามาดูๆ", "ทอล์คโชว์?",
@@ -56,18 +72,45 @@ const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
 export type SimComment = { id: number; name: string; text: string };
 
-/** Builds a comment; ~35% of the time it repeats something already said. */
+// Small edits so a line can be "typed similarly" without being identical.
+const TWEAKS: ((t: string) => string)[] = [
+  (t) => t + " 555",
+  (t) => t + "เลย",
+  (t) => t + "!!",
+  (t) => t + " 😮",
+  (t) => t + " 🔥",
+  (t) => t + " 🥹",
+  (t) => t + "ๆ",
+  (t) => "จริงดิ " + t,
+  (t) => "โอ้โห " + t,
+  (t) => "เฮ้ย " + t,
+  (t) => t.replace(/!+$/, "") + "???",
+  (t) => t.replace(/ /, "  "),
+  (t) => t + " 🙏",
+  (t) => t + " 😂",
+];
+
+/**
+ * Builds a comment. Names are unique for the whole session; text is never an
+ * exact repeat — about 35% of lines are a tweaked copy of an earlier one.
+ */
 export function makeComment(
   id: number,
   viewers: number,
   recent: SimComment[],
+  usedNames: Set<string>,
+  usedTexts: Set<string>,
 ): SimComment {
-  const name = pick(NAMES);
-  if (recent.length > 4 && Math.random() < 0.35) {
-    return { id, name, text: pick(recent).text };
-  }
+  const name = uniqueName(usedNames);
   const pool = viewers < 40 ? EARLY : viewers < 8000 ? [...EARLY.slice(0, 3), ...MID] : [...MID, ...LATE];
-  return { id, name, text: pick(pool) };
+  let text = recent.length > 4 && Math.random() < 0.35 ? pick(recent).text : pick(pool);
+  for (let i = 0; i < 8 && usedTexts.has(text); i++) {
+    // Tweak the original text, not an already-tweaked one, to keep it readable.
+    text = pick(TWEAKS)(i === 0 ? text : pick(pool));
+  }
+  if (usedTexts.has(text)) text += " " + pick(["😮", "🔥", "🙏", "👀", "😂"]) + Math.floor(Math.random() * 99);
+  usedTexts.add(text);
+  return { id, name, text };
 }
 
 /** Milliseconds until the next comment — faster as the audience grows. */
