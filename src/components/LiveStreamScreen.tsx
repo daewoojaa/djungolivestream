@@ -31,9 +31,13 @@ const REACTIONS = [
   { emoji: "🔥", left: 26, duration: 4.9, delay: 4.1 },
 ];
 
-/** A comment that appears at a fixed point of the clip, every time it plays. */
+/**
+ * A comment that appears at a fixed point every time the clip plays: either at a
+ * moment of the clip (`at`, seconds) or as the Nth comment in the chat (`order`, 1-based).
+ */
 export type ScheduledComment = {
-  at: number;
+  at?: number;
+  order?: number;
   name: string;
   text: string;
   /** Show as a highlighted banner for a few seconds (e.g. a comment the streamer reads out). */
@@ -187,6 +191,18 @@ export default function LiveStreamScreen({
     firedRef.current = new Set();
     let timer: ReturnType<typeof setTimeout>;
     const push = () => {
+      const slot = scheduled?.findIndex(
+        (item, i) => item.order === idRef.current + 1 && !firedRef.current.has(i),
+      );
+      if (scheduled && slot !== undefined && slot >= 0) {
+        firedRef.current.add(slot);
+        const item = scheduled[slot];
+        const comment: SimComment = { id: idRef.current++, name: item.name, text: item.text };
+        commentsRef.current = [...commentsRef.current.slice(-24), comment];
+        setComments(commentsRef.current.slice(-VISIBLE_COMMENTS));
+        timer = setTimeout(push, commentDelay(viewersRef.current) * commentPace);
+        return;
+      }
       // Mostly talk about whatever is being said in the clip right now.
       const time = videoRef.current?.currentTime ?? 0;
       const phase = phases?.find((ph) => time >= ph.from && time < ph.to);
@@ -213,7 +229,7 @@ export default function LiveStreamScreen({
     if (!running || !scheduled) return;
     const time = videoRef.current?.currentTime ?? 0;
     scheduled.forEach((item, i) => {
-      if (time < item.at || firedRef.current.has(i)) return;
+      if (item.at === undefined || time < item.at || firedRef.current.has(i)) return;
       firedRef.current.add(i);
       const comment: SimComment = { id: idRef.current++, name: item.name, text: item.text };
       commentsRef.current = [...commentsRef.current.slice(-24), comment];

@@ -34,9 +34,9 @@ const SLOTS: StreamConfig[] = [
     // A stream that started a while ago: big audience from the first second.
     initialViewers: 21800,
     midStream: true,
-    // Slow chat so Rose's comment stays on screen for a good while.
+    // Slow chat; Rose's comment is always the 5th one and stays on screen a good while.
     commentPace: 8,
-    scheduled: [{ at: 5, name: "โรส", text: "แฟนพี่พิชญะปัจจุบันเป็นยังไงค่ะ?" }],
+    scheduled: [{ order: 5, name: "โรส", text: "แฟนพี่พิชญะปัจจุบันเป็นยังไงค่ะ?" }],
   },
 ];
 
