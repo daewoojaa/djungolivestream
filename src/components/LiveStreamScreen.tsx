@@ -45,6 +45,8 @@ export default function LiveStreamScreen({ accent = "#FF3B30" }: LiveStreamScree
   const [session, setSession] = useState(0);
   // Browsers block autoplay-with-sound without a tap (e.g. clip restored on reload).
   const [needsUnmute, setNeedsUnmute] = useState(false);
+  // True once the clip has played to its end: everything freezes.
+  const [ended, setEnded] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -56,6 +58,7 @@ export default function LiveStreamScreen({ accent = "#FF3B30" }: LiveStreamScree
     setViewers(0);
     setTrend(0);
     setComments([]);
+    setEnded(false);
     setSession((n) => n + 1);
   }, []);
 
@@ -111,6 +114,7 @@ export default function LiveStreamScreen({ accent = "#FF3B30" }: LiveStreamScree
 
   // Viewer count: ~20 with stalls early, then a fast climb to 30k and beyond.
   useEffect(() => {
+    if (ended) return;
     const start = performance.now();
     viewersRef.current = 0;
     let history: number[] = [];
@@ -126,10 +130,11 @@ export default function LiveStreamScreen({ accent = "#FF3B30" }: LiveStreamScree
     };
     timer = setTimeout(tick, 800);
     return () => clearTimeout(timer);
-  }, [session]);
+  }, [session, ended]);
 
   // Comments: mix of fresh and repeated lines, faster as the audience grows.
   useEffect(() => {
+    if (ended) return;
     commentsRef.current = [];
     let id = 0;
     let timer: ReturnType<typeof setTimeout>;
@@ -141,7 +146,7 @@ export default function LiveStreamScreen({ accent = "#FF3B30" }: LiveStreamScree
     };
     timer = setTimeout(push, 1200);
     return () => clearTimeout(timer);
-  }, [session]);
+  }, [session, ended]);
 
   const restart = () => {
     const video = videoRef.current;
@@ -171,8 +176,11 @@ export default function LiveStreamScreen({ accent = "#FF3B30" }: LiveStreamScree
           className={styles.video}
           src={clipUrl}
           autoPlay
-          loop
           playsInline
+          onEnded={() => {
+            setEnded(true);
+            setTrend(0);
+          }}
           onLoadedMetadata={(e) => {
             const d = e.currentTarget.duration;
             if (Number.isFinite(d) && d > 0) durationRef.current = d;
@@ -181,7 +189,12 @@ export default function LiveStreamScreen({ accent = "#FF3B30" }: LiveStreamScree
       ) : (
         <div className={styles.videoLabel}>แตะ LIVE เพื่อเพิ่มคลิป</div>
       )}
-      {needsUnmute && (
+      {ended && (
+        <div className={styles.endedBanner} role="status">
+          ถ่ายทอดสดสิ้นสุดแล้ว
+        </div>
+      )}
+      {needsUnmute && !ended && (
         <button type="button" className={styles.unmuteBtn} onClick={unmute}>
           🔇 แตะเพื่อเปิดเสียง
         </button>
@@ -202,11 +215,11 @@ export default function LiveStreamScreen({ accent = "#FF3B30" }: LiveStreamScree
             <circle cx="12" cy="12" r="3" />
           </svg>
           <span className={styles.viewerCount}>{viewerCount}</span>
-          <span className={styles.viewerTrend}>▲ {viewerTrend}</span>
+          {!ended && <span className={styles.viewerTrend}>▲ {viewerTrend}</span>}
         </button>
         <button
           type="button"
-          className={styles.liveBadge}
+          className={`${styles.liveBadge} ${ended ? styles.liveEnded : ""}`}
           onClick={() => fileRef.current?.click()}
           aria-label="แตะเพื่อเลือกคลิปวิดีโอ"
         >
@@ -229,7 +242,7 @@ export default function LiveStreamScreen({ accent = "#FF3B30" }: LiveStreamScree
       </div>
 
       <div className={styles.reactionCol} aria-hidden="true">
-        {REACTIONS.map((r, i) => (
+        {!ended && REACTIONS.map((r, i) => (
           <span
             key={i}
             className={styles.emoji}
