@@ -43,6 +43,8 @@ export default function LiveStreamScreen({ accent = "#FF3B30" }: LiveStreamScree
   const [comments, setComments] = useState<SimComment[]>([]);
   // Bumping this restarts the simulation (viewer count, comments, clip playback).
   const [session, setSession] = useState(0);
+  // Browsers block autoplay-with-sound without a tap (e.g. clip restored on reload).
+  const [needsUnmute, setNeedsUnmute] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -63,6 +65,7 @@ export default function LiveStreamScreen({ accent = "#FF3B30" }: LiveStreamScree
       return URL.createObjectURL(blob);
     });
     durationRef.current = DEFAULT_CLIP_SECONDS;
+    setNeedsUnmute(false);
     resetSession();
   }, [resetSession]);
 
@@ -76,6 +79,27 @@ export default function LiveStreamScreen({ accent = "#FF3B30" }: LiveStreamScree
       cancelled = true;
     };
   }, [applyClip]);
+
+  // Play with sound; fall back to muted playback if the browser refuses.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !clipUrl) return;
+    video.muted = false;
+    video.play().catch(() => {
+      video.muted = true;
+      video.play().catch(() => {});
+      setNeedsUnmute(true);
+    });
+  }, [clipUrl]);
+
+  const unmute = () => {
+    const video = videoRef.current;
+    if (video) {
+      video.muted = false;
+      video.play().catch(() => {});
+    }
+    setNeedsUnmute(false);
+  };
 
   const handlePickClip = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -148,7 +172,6 @@ export default function LiveStreamScreen({ accent = "#FF3B30" }: LiveStreamScree
           src={clipUrl}
           autoPlay
           loop
-          muted
           playsInline
           onLoadedMetadata={(e) => {
             const d = e.currentTarget.duration;
@@ -157,6 +180,11 @@ export default function LiveStreamScreen({ accent = "#FF3B30" }: LiveStreamScree
         />
       ) : (
         <div className={styles.videoLabel}>แตะ LIVE เพื่อเพิ่มคลิป</div>
+      )}
+      {needsUnmute && (
+        <button type="button" className={styles.unmuteBtn} onClick={unmute}>
+          🔇 แตะเพื่อเปิดเสียง
+        </button>
       )}
       <input ref={fileRef} type="file" accept="video/*" hidden onChange={handlePickClip} />
       <div className={styles.scrimTop} aria-hidden="true" />
