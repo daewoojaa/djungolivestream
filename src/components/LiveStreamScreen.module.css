@@ -31,12 +31,20 @@
   );
 }
 
+.video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .videoLabel {
   position: absolute;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  color: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.4);
   font-size: 13px;
   letter-spacing: 3px;
   font-weight: 600;
@@ -80,6 +88,9 @@
   border-radius: 6px;
   padding: 5px 10px 5px 8px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
 }
 
 .liveDot {
@@ -104,6 +115,9 @@
   background: rgba(0, 0, 0, 0.42);
   border-radius: 20px;
   padding: 6px 12px 6px 10px;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
 }
 
 .viewerPill svg {
@@ -139,14 +153,16 @@
 .commentsTrack {
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
   gap: 8px;
-  animation: scrollStep 15s ease infinite;
+  height: 100%;
 }
 
 .comment {
   display: flex;
   align-items: flex-start;
-  height: 36px;
+  flex: none;
+  animation: commentIn 0.3s ease-out;
 }
 
 .cBubble {
@@ -256,33 +272,14 @@
   }
 }
 
-@keyframes scrollStep {
-  0%,
-  13% {
+@keyframes commentIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
     transform: translateY(0);
-  }
-  16.6%,
-  29.6% {
-    transform: translateY(-44px);
-  }
-  33.2%,
-  46.2% {
-    transform: translateY(-88px);
-  }
-  49.8%,
-  62.8% {
-    transform: translateY(-132px);
-  }
-  66.4%,
-  79.4% {
-    transform: translateY(-176px);
-  }
-  83%,
-  96% {
-    transform: translateY(-220px);
-  }
-  100% {
-    transform: translateY(-264px);
   }
 }
 
@@ -308,7 +305,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .liveDot,
-  .commentsTrack,
+  .comment,
   .emoji {
     animation: none;
   }

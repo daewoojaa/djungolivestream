@@ -1,23 +1,25 @@
 "use client";
 
-import { useState, type CSSProperties, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type CSSProperties,
+  type FormEvent,
+} from "react";
+import { loadClip, saveClip } from "@/lib/clipStore";
+import {
+  commentDelay,
+  DEFAULT_CLIP_SECONDS,
+  makeComment,
+  nextViewers,
+  type SimComment,
+} from "@/lib/liveSim";
 import styles from "./LiveStreamScreen.module.css";
 
-type Comment = {
-  id: string;
-  name: string;
-  text: string;
-};
-
-// Mock comment feed — in a real app this would come from a WebSocket / live chat API.
-const MOCK_COMMENTS: Comment[] = [
-  { id: "c1", name: "เมย์ไทย", text: "มาแล้ว!! 🙌" },
-  { id: "c2", name: "ก้องกิ่ง", text: "เพลงนี้เพราะมากกก" },
-  { id: "c3", name: "Nara_", text: "สวยจังวันนี้ 😍" },
-  { id: "c4", name: "ปูเป้", text: "ถ่ายทอดจากไหนอะ" },
-  { id: "c5", name: "บอยบอย", text: "เก่งมากจริงๆ" },
-  { id: "c6", name: "น้องฟ้า", text: "อยากดูอีก 🥹" },
-];
+const VISIBLE_COMMENTS = 5;
 
 const REACTIONS = [
   { emoji: "❤️", left: 30, duration: 3.8, delay: 0 },
@@ -31,16 +33,100 @@ const REACTIONS = [
 
 export interface LiveStreamScreenProps {
   accent?: string;
-  viewerCount?: string;
-  viewerTrend?: string;
 }
 
-export default function LiveStreamScreen({
-  accent = "#FF3B30",
-  viewerCount = "2,481",
-  viewerTrend = "+18",
-}: LiveStreamScreenProps) {
+export default function LiveStreamScreen({ accent = "#FF3B30" }: LiveStreamScreenProps) {
   const [draft, setDraft] = useState("");
+  const [clipUrl, setClipUrl] = useState<string | null>(null);
+  const [viewers, setViewers] = useState(0);
+  const [trend, setTrend] = useState(0);
+  const [comments, setComments] = useState<SimComment[]>([]);
+  // Bumping this restarts the simulation (viewer count, comments, clip playback).
+  const [session, setSession] = useState(0);
+
+  const fileRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const durationRef = useRef(DEFAULT_CLIP_SECONDS);
+  const viewersRef = useRef(0);
+  const commentsRef = useRef<SimComment[]>([]);
+
+  const resetSession = useCallback(() => {
+    setViewers(0);
+    setTrend(0);
+    setComments([]);
+    setSession((n) => n + 1);
+  }, []);
+
+  const applyClip = useCallback((blob: Blob) => {
+    setClipUrl((old) => {
+      if (old) URL.revokeObjectURL(old);
+      return URL.createObjectURL(blob);
+    });
+    durationRef.current = DEFAULT_CLIP_SECONDS;
+    resetSession();
+  }, [resetSession]);
+
+  // Restore the remembered clip on first load.
+  useEffect(() => {
+    let cancelled = false;
+    loadClip().then((blob) => {
+      if (blob && !cancelled) applyClip(blob);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [applyClip]);
+
+  const handlePickClip = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    saveClip(file).catch(() => {});
+    applyClip(file);
+  };
+
+  // Viewer count: ~20 with stalls early, then a fast climb to 30k and beyond.
+  useEffect(() => {
+    const start = performance.now();
+    viewersRef.current = 0;
+    let history: number[] = [];
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      const t = (performance.now() - start) / 1000;
+      const next = nextViewers(viewersRef.current, t, durationRef.current);
+      viewersRef.current = next;
+      history = [...history.slice(-6), next];
+      setViewers(next);
+      setTrend(next - history[0]);
+      timer = setTimeout(tick, 600 + Math.random() * 700);
+    };
+    timer = setTimeout(tick, 800);
+    return () => clearTimeout(timer);
+  }, [session]);
+
+  // Comments: mix of fresh and repeated lines, faster as the audience grows.
+  useEffect(() => {
+    commentsRef.current = [];
+    let id = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const push = () => {
+      const next = makeComment(id++, viewersRef.current, commentsRef.current);
+      commentsRef.current = [...commentsRef.current.slice(-24), next];
+      setComments(commentsRef.current.slice(-VISIBLE_COMMENTS));
+      timer = setTimeout(push, commentDelay(viewersRef.current));
+    };
+    timer = setTimeout(push, 1200);
+    return () => clearTimeout(timer);
+  }, [session]);
+
+  const restart = () => {
+    const video = videoRef.current;
+    if (video) {
+      video.currentTime = 0;
+      video.play().catch(() => {});
+    }
+    resetSession();
+  };
 
   const handleSend = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -48,35 +134,63 @@ export default function LiveStreamScreen({
     setDraft("");
   };
 
-  // Comment list is duplicated once so the step animation loops seamlessly.
-  const tickerComments = [...MOCK_COMMENTS, ...MOCK_COMMENTS];
+  const viewerCount = viewers.toLocaleString("en-US");
+  const viewerTrend = Math.max(0, trend).toLocaleString("en-US");
 
   return (
     <div className={styles.phone} style={{ "--accent": accent } as CSSProperties}>
       <div className={styles.videoBg} aria-hidden="true" />
-      <div className={styles.videoLabel}>LIVE VIDEO FEED</div>
+      {clipUrl ? (
+        <video
+          ref={videoRef}
+          key={clipUrl}
+          className={styles.video}
+          src={clipUrl}
+          autoPlay
+          loop
+          muted
+          playsInline
+          onLoadedMetadata={(e) => {
+            const d = e.currentTarget.duration;
+            if (Number.isFinite(d) && d > 0) durationRef.current = d;
+          }}
+        />
+      ) : (
+        <div className={styles.videoLabel}>แตะ LIVE เพื่อเพิ่มคลิป</div>
+      )}
+      <input ref={fileRef} type="file" accept="video/*" hidden onChange={handlePickClip} />
       <div className={styles.scrimTop} aria-hidden="true" />
       <div className={styles.scrimBottom} aria-hidden="true" />
 
       <div className={styles.topBar}>
-        <div className={styles.viewerPill} aria-label={`มีผู้ชม ${viewerCount} คน`}>
+        <button
+          type="button"
+          className={styles.viewerPill}
+          onClick={restart}
+          aria-label={`มีผู้ชม ${viewerCount} คน แตะเพื่อเริ่มใหม่`}
+        >
           <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} aria-hidden="true">
             <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" />
             <circle cx="12" cy="12" r="3" />
           </svg>
           <span className={styles.viewerCount}>{viewerCount}</span>
           <span className={styles.viewerTrend}>▲ {viewerTrend}</span>
-        </div>
-        <div className={styles.liveBadge}>
+        </button>
+        <button
+          type="button"
+          className={styles.liveBadge}
+          onClick={() => fileRef.current?.click()}
+          aria-label="แตะเพื่อเลือกคลิปวิดีโอ"
+        >
           <span className={styles.liveDot} aria-hidden="true" />
           <span className={styles.liveText}>LIVE</span>
-        </div>
+        </button>
       </div>
 
       <div className={styles.commentsCol} aria-label="ความเห็นผู้ชม">
         <div className={styles.commentsTrack}>
-          {tickerComments.map((comment, i) => (
-            <div className={styles.comment} key={`${comment.id}-${i}`}>
+          {comments.map((comment) => (
+            <div className={styles.comment} key={comment.id}>
               <div className={styles.cBubble}>
                 <span className={styles.cName}>{comment.name}</span>
                 <span className={styles.cText}>{comment.text}</span>

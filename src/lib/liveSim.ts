@@ -1,0 +1,77 @@
+// Simulated viewer count + comment generator for the clip
+// ("พิชญะไลฟ์สดประกาศทอล์คโชว์เปิดเผยความจริงทั้งหมด").
+
+export const DEFAULT_CLIP_SECONDS = 120;
+const PHASE1_END = 0.2; // first 20% of the clip: 0 → 20 viewers, slowly
+const PHASE2_END = 0.8; // then a fast climb to 30k
+const TARGET = 30000;
+
+/** Viewer count the simulation is heading toward at time t (seconds). */
+export function viewerTarget(t: number, duration: number): number {
+  const p1 = duration * PHASE1_END;
+  const p2 = duration * PHASE2_END;
+  if (t < p1) return 3 + 17 * (t / p1);
+  if (t < p2) return 20 + (TARGET - 20) * Math.pow((t - p1) / (p2 - p1), 1.7);
+  const q = Math.min((t - p2) / (duration - p2), 1);
+  return TARGET * (1 + 0.3 * q) + Math.max(0, t - duration) * 40;
+}
+
+/** One step of the viewer counter: stalls and small steps early, surges later. */
+export function nextViewers(current: number, t: number, duration: number): number {
+  const target = viewerTarget(t, duration);
+  if (t < duration * PHASE1_END) {
+    if (Math.random() < 0.45) return current; // stall
+    return Math.min(Math.ceil(target), current + 1 + (Math.random() < 0.25 ? 1 : 0));
+  }
+  if (Math.random() < 0.08) return current; // occasional pause
+  const gap = Math.max(0, target - current);
+  const step = Math.ceil(gap * (0.25 + Math.random() * 0.4));
+  return current + step;
+}
+
+const NAMES = [
+  "เมย์ไทย", "ก้องกิ่ง", "Nara_", "ปูเป้", "บอยบอย", "น้องฟ้า", "mint.mint", "โอ๊ตตี้",
+  "แพรวา", "Fah_22", "ต้นกล้า", "นุ่นนิ่ม", "Pop", "จอห์นนี่", "ข้าวปั้น", "ลูกพีช",
+  "ธีร์", "มะปราง", "Bank99", "แอนนี่", "เจ๊ติ๋ม", "พี่หมี", "ฟรีเดอม", "ส้มโอ",
+];
+
+const EARLY = [
+  "มาแล้ว!", "ไลฟ์อะไรอะ", "ใครมาก่อนบ้าง", "พิชญะไลฟ์จริงดิ", "เข้ามาดูๆ", "ทอล์คโชว์?",
+  "เรื่องอะไรเนี่ย", "มาตามที่เห็นในทวิต", "ขอที่ว่างหน่อย 🙋", "ใครแชร์มา",
+];
+const MID = [
+  "ความจริงอะไรกันแน่", "รอฟังอยู่นะ", "เปิดเผยหมดเลยใช่ไหม", "ลุ้นมาก 😮", "พูดมาเลยพี่",
+  "ทอล์คโชว์จัดที่ไหน", "อย่าให้ผิดหวังนะ", "ใจเต้นแรง", "ความจริงทั้งหมดเลยนะ!",
+  "ชาวเน็ตมากันเยอะ", "ติดตามอยู่ 👀", "จะพูดเรื่องนั้นไหม", "ขอบอกว่าอยากรู้มาก",
+  "พิชญะมีอะไรจะบอก", "ใครรู้บ้างเรื่องอะไร", "รีบพูดเลย รอไม่ไหวแล้ว",
+];
+const LATE = [
+  "คนดูเยอะมาก!!", "ทุกคนมาดูไลฟ์นี้", "เทรนด์ติดอันดับ 1 แล้ว", "ตั๋วทอล์คโชว์ขายที่ไหน",
+  "ไม่พลาดแน่นอน 🔥", "เน็ตแตกแน่ๆ", "แชร์ให้เพื่อนแล้ว", "ความจริงจะเป็นยังไงนะ",
+  "ขอดูทอล์คโชว์ด้วย!", "คอมเมนต์ไวมาก อ่านไม่ทัน", "พิชญะสู้ๆ 💪", "ตื่นเต้นสุดๆ",
+  "รอวันทอล์คโชว์เลย", "เอาจริงแล้วสินะ", "ไลฟ์นี้ต้องจารึก",
+];
+
+const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+
+export type SimComment = { id: number; name: string; text: string };
+
+/** Builds a comment; ~35% of the time it repeats something already said. */
+export function makeComment(
+  id: number,
+  viewers: number,
+  recent: SimComment[],
+): SimComment {
+  const name = pick(NAMES);
+  if (recent.length > 4 && Math.random() < 0.35) {
+    return { id, name, text: pick(recent).text };
+  }
+  const pool = viewers < 40 ? EARLY : viewers < 8000 ? [...EARLY.slice(0, 3), ...MID] : [...MID, ...LATE];
+  return { id, name, text: pick(pool) };
+}
+
+/** Milliseconds until the next comment — faster as the audience grows. */
+export function commentDelay(viewers: number): number {
+  const base = viewers < 40 ? 2400 : viewers < 1000 ? 1500 : viewers < 10000 ? 900 : 550;
+  return base * (0.5 + Math.random());
+}
