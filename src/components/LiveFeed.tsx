@@ -34,7 +34,9 @@ const SLOTS: StreamConfig[] = [
     // A stream that started a while ago: big audience from the first second.
     initialViewers: 21800,
     midStream: true,
-    scheduled: [{ at: 5, name: "โรส", text: "แฟนพี่พิชญะปัจจุบันเป็นยังไงค่ะ?", pin: true }],
+    // Slow chat so Rose's comment stays on screen for a good while.
+    commentPace: 8,
+    scheduled: [{ at: 5, name: "โรส", text: "แฟนพี่พิชญะปัจจุบันเป็นยังไงค่ะ?" }],
   },
 ];
 
@@ -138,7 +140,6 @@ export default function LiveFeed() {
           <span key={i} className={`${styles.dot} ${i === index ? styles.dotActive : ""}`} />
         ))}
       </div>
-      {index === 0 && <div className={styles.hint}>⌃ ปัดขึ้นเพื่อดูคลิปถัดไป</div>}
     </div>
   );
 }

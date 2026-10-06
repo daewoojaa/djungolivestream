@@ -50,6 +50,8 @@ export interface StreamConfig {
   midStream?: boolean;
   scheduled?: ScheduledComment[];
   phases?: TopicPhase[];
+  /** Multiplies the gap between random comments (1 = normal speed, higher = slower). */
+  commentPace?: number;
 }
 
 export interface LiveStreamScreenProps {
@@ -72,6 +74,7 @@ export default function LiveStreamScreen({
   const midStream = config.midStream ?? false;
   const scheduled = config.scheduled;
   const phases = config.phases;
+  const commentPace = config.commentPace ?? 1;
 
   const [draft, setDraft] = useState("");
   const [viewers, setViewers] = useState(initialViewers);
@@ -198,11 +201,11 @@ export default function LiveStreamScreen({
       );
       commentsRef.current = [...commentsRef.current.slice(-24), next];
       setComments(commentsRef.current.slice(-VISIBLE_COMMENTS));
-      timer = setTimeout(push, commentDelay(viewersRef.current));
+      timer = setTimeout(push, commentDelay(viewersRef.current) * commentPace);
     };
     timer = setTimeout(push, midStream ? 300 : 1200);
     return () => clearTimeout(timer);
-  }, [session, running, midStream, scheduled, phases]);
+  }, [session, running, midStream, scheduled, phases, commentPace]);
 
   // Scheduled comments fire off the video's own clock, so they land at the same
   // moment of the clip on every play.
