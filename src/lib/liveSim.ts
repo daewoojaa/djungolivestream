@@ -108,13 +108,17 @@ export function makeComment(
   recent: SimComment[],
   usedNames: Set<string>,
   usedTexts: Set<string>,
+  /** When given, the line is drawn from these (comments about what is being said right now). */
+  topicLines?: string[],
 ): SimComment {
   const name = uniqueName(usedNames);
   const pool = viewers < 40 ? EARLY : viewers < 8000 ? [...EARLY.slice(0, 3), ...MID] : [...MID, ...LATE];
-  let text = recent.length > 4 && Math.random() < 0.35 ? pick(recent).text : pick(pool);
+  const source = topicLines ?? pool;
+  let text =
+    !topicLines && recent.length > 4 && Math.random() < 0.35 ? pick(recent).text : pick(source);
   for (let i = 0; i < 8 && usedTexts.has(text); i++) {
     // Tweak the original text, not an already-tweaked one, to keep it readable.
-    text = pick(TWEAKS)(i === 0 ? text : pick(pool));
+    text = pick(TWEAKS)(i === 0 ? text : pick(source));
   }
   if (usedTexts.has(text)) text += " " + pick(["😮", "🔥", "🙏", "👀", "😂"]) + Math.floor(Math.random() * 99);
   usedTexts.add(text);

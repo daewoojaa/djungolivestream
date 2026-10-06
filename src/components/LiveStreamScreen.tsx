@@ -32,7 +32,16 @@ const REACTIONS = [
 ];
 
 /** A comment that appears at a fixed point of the clip, every time it plays. */
-export type ScheduledComment = { at: number; name: string; text: string };
+export type ScheduledComment = {
+  at: number;
+  name: string;
+  text: string;
+  /** Show as a highlighted banner for a few seconds (e.g. a comment the streamer reads out). */
+  pin?: boolean;
+};
+
+/** Chat topics tied to what is being said in the clip between `from` and `to` seconds. */
+export type TopicPhase = { from: number; to: number; lines: string[] };
 
 export interface StreamConfig {
   /** Viewer count to start from; with `midStream` the count creeps up from here. */
@@ -40,6 +49,7 @@ export interface StreamConfig {
   /** Simulates joining a stream that started a while ago (busy chat from the start). */
   midStream?: boolean;
   scheduled?: ScheduledComment[];
+  phases?: TopicPhase[];
 }
 
 export interface LiveStreamScreenProps {
@@ -61,6 +71,7 @@ export default function LiveStreamScreen({
   const initialViewers = config.initialViewers ?? 0;
   const midStream = config.midStream ?? false;
   const scheduled = config.scheduled;
+  const phases = config.phases;
 
   const [draft, setDraft] = useState("");
   const [viewers, setViewers] = useState(initialViewers);
@@ -173,12 +184,17 @@ export default function LiveStreamScreen({
     firedRef.current = new Set();
     let timer: ReturnType<typeof setTimeout>;
     const push = () => {
+      // Mostly talk about whatever is being said in the clip right now.
+      const time = videoRef.current?.currentTime ?? 0;
+      const phase = phases?.find((ph) => time >= ph.from && time < ph.to);
+      const topicLines = phase && Math.random() < 0.7 ? phase.lines : undefined;
       const next = makeComment(
         idRef.current++,
         viewersRef.current,
         commentsRef.current,
         usedNamesRef.current,
         usedTextsRef.current,
+        topicLines,
       );
       commentsRef.current = [...commentsRef.current.slice(-24), next];
       setComments(commentsRef.current.slice(-VISIBLE_COMMENTS));
@@ -186,7 +202,7 @@ export default function LiveStreamScreen({
     };
     timer = setTimeout(push, midStream ? 300 : 1200);
     return () => clearTimeout(timer);
-  }, [session, running, midStream, scheduled]);
+  }, [session, running, midStream, scheduled, phases]);
 
   // Scheduled comments fire off the video's own clock, so they land at the same
   // moment of the clip on every play.
@@ -199,6 +215,7 @@ export default function LiveStreamScreen({
       const comment: SimComment = { id: idRef.current++, name: item.name, text: item.text };
       commentsRef.current = [...commentsRef.current.slice(-24), comment];
       setComments(commentsRef.current.slice(-VISIBLE_COMMENTS));
+      if (!item.pin) return;
       if (pinTimerRef.current) clearTimeout(pinTimerRef.current);
       setPinned(comment);
       pinTimerRef.current = setTimeout(() => setPinned(null), PINNED_MS);

@@ -6,13 +6,35 @@ import LiveStreamScreen, { type StreamConfig } from "./LiveStreamScreen";
 import styles from "./LiveFeed.module.css";
 
 // Defined at module level so the config objects stay referentially stable.
+// Clip 1 timeline (seconds), from a rough transcript: he answers accusations (~8-20s),
+// denies and gets angry (~20-36s), long pause, says the talk show is pointless (~75-98s),
+// then promises to admit fault and asks everyone to wait (~98-122s).
+const CLIP1: StreamConfig = {
+  scheduled: [
+    { at: 12, name: "ปลาทองใจดี", text: "ใครไปพูดอะไรถึงพี่เขาอะ" },
+    { at: 17, name: "Kitty_wow", text: "ฟังก่อนๆ เดี๋ยวพลาด" },
+    { at: 18, name: "เสือสิงห์99", text: "พิชญะ หลอกลวง เลิกโกหกสักที!", pin: true },
+    { at: 24, name: "ลุงต้อมนักเลง", text: "แก้ตัวเก่งนะ ไม่เชื่อหรอก" },
+    { at: 28, name: "aom.พิมพ์", text: "ขี้โกหก พูดไปเรื่อย ไม่มีใครเชื่อ!", pin: true },
+    { at: 32, name: "ก้านกล้วย", text: "พิชญะโกรธแล้ว!!" },
+    { at: 34, name: "Dream_Nine", text: "ใจเย็นๆ พี่ ตอบดีๆ" },
+  ],
+  phases: [
+    { from: 8, to: 20, lines: ["เกิดอะไรขึ้นอะ", "ใครพูดถึงพี่พิชญะ", "พี่พิชญะตอบแล้ว", "ฟังก่อนๆ", "เรื่องที่โดนพูดถึงใช่ไหม", "ตั้งใจฟังนะ", "เงียบๆ ก่อน ขอฟัง"] },
+    { from: 20, to: 36, lines: ["ปฏิเสธเลยเหรอ", "เสียงเริ่มสั่นแล้ว", "พิชญะโกรธแล้ว!", "รู้สึกผิดจริงดิ", "ใจเย็นๆ พี่", "แอบสงสาร", "ไม่เชื่อ แถไปเรื่อย", "โกหกหรือเปล่า", "พี่ต้องการอะไรอะ"] },
+    { from: 36, to: 75, lines: ["ความจริงคืออะไร", "เงียบไปนานเลย", "ค้างหรือเปล่า", "เน็ตหลุดไหม", "พูดต่อสิ", "ลุ้นจนมือสั่น", "ถ้าเปิดความจริงจะเกิดอะไร", "ยังฟังอยู่นะ"] },
+    { from: 75, to: 98, lines: ["ยกเลิกทอล์คโชว์เหรอ!", "ไม่จัดแล้วเหรอ", "อ้าว ไม่จัดแล้ว", "แล้วความจริงล่ะ", "เสียดายอ่ะ", "ทอล์คโชว์ไม่มีแล้ว?!", "ไม่มีประโยชน์ยังไง"] },
+    { from: 98, to: 125, lines: ["ยอมรับแล้วเหรอ", "สัญญานะ", "รออยู่นะ", "จะรอดูรายการ", "อย่าหนีนะ", "ขอให้พูดจริง", "ยืนยันแล้วนะ", "รอดูอยู่ๆ"] },
+  ],
+};
+
 const SLOTS: StreamConfig[] = [
-  {},
+  CLIP1,
   {
     // A stream that started a while ago: big audience from the first second.
     initialViewers: 21800,
     midStream: true,
-    scheduled: [{ at: 5, name: "โรส", text: "แฟนพี่พิชญะปัจจุบันเป็นยังไงค่ะ?" }],
+    scheduled: [{ at: 5, name: "โรส", text: "แฟนพี่พิชญะปัจจุบันเป็นยังไงค่ะ?", pin: true }],
   },
 ];
 
